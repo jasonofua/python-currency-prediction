@@ -14,6 +14,8 @@ from prophet import Prophet
 import matplotlib.pyplot as plt
 import seaborn as sns
 import ta
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 import yfinance as yf
@@ -307,49 +309,126 @@ class AdvancedMarketPredictor:
         
         return model, forecast
 
-    def plot_predictions(self, forecast, feature_importance=True):
+    def plot_predictions(self, forecast):
         """
-        Enhanced visualization of predictions and model performance
+        Enhanced visualization using plotly instead of matplotlib
         """
         print("\nCreating visualizations...")
         
-        fig = plt.figure(figsize=(15, 10))
-        
-        # Plot 1: Actual vs Predicted
-        ax1 = plt.subplot2grid((2, 2), (0, 0), colspan=2)
-        ax1.plot(self.data.index, self.data['Close'], label='Actual', alpha=0.7)
-        ax1.plot(forecast['ds'], forecast['yhat'], label='Prophet Forecast', alpha=0.7)
-        ax1.fill_between(
-            forecast['ds'],
-            forecast['yhat_lower'],
-            forecast['yhat_upper'],
-            alpha=0.3,
-            label='Confidence Interval'
+        # Create figure with secondary y-axis
+        fig = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=(
+                'Price Prediction with Confidence Intervals',
+                'Model R² Comparison',
+                'Model MSE Comparison',
+                'Feature Importance'
+            ),
+            specs=[
+                [{"colspan": 2}, None],
+                [{"type": "bar"}, {"type": "bar"}]
+            ]
         )
-        ax1.set_title('Price Prediction with Confidence Intervals')
-        ax1.legend()
         
-        # Plot 2: Model Comparison
-        ax2 = plt.subplot2grid((2, 2), (1, 0))
+        # Add price predictions
+        fig.add_trace(
+            go.Scatter(
+                x=self.data.index,
+                y=self.data['Close'],
+                name="Actual",
+                line=dict(color='blue')
+            ),
+            row=1, col=1
+        )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=forecast['ds'],
+                y=forecast['yhat'],
+                name="Forecast",
+                line=dict(color='red', dash='dash')
+            ),
+            row=1, col=1
+        )
+        
+        # Add confidence intervals
+        fig.add_trace(
+            go.Scatter(
+                x=forecast['ds'],
+                y=forecast['yhat_upper'],
+                name='Upper Bound',
+                line=dict(color='gray', dash='dot'),
+                showlegend=False
+            ),
+            row=1, col=1
+        )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=forecast['ds'],
+                y=forecast['yhat_lower'],
+                name='Lower Bound',
+                line=dict(color='gray', dash='dot'),
+                fill='tonexty',
+                showlegend=False
+            ),
+            row=1, col=1
+        )
+        
+        # Add model comparison bars
         model_names = list(self.models.keys())
         r2_scores = [m['r2_mean'] for m in self.models.values()]
-        ax2.bar(model_names, r2_scores)
-        ax2.set_title('Model R² Comparison')
-        plt.xticks(rotation=45)
+        mse_scores = [m['mse_mean'] for m in self.models.values()]
         
-        # Plot 3: Feature Importance (if available)
-        if feature_importance and 'rf' in self.models:
-            ax3 = plt.subplot2grid((2, 2), (1, 1))
+        # R² comparison
+        fig.add_trace(
+            go.Bar(
+                x=model_names,
+                y=r2_scores,
+                name='R² Score'
+            ),
+            row=2, col=1
+        )
+        
+        # MSE comparison
+        fig.add_trace(
+            go.Bar(
+                x=model_names,
+                y=mse_scores,
+                name='MSE'
+            ),
+            row=2, col=2
+        )
+        
+        # Add feature importance if available
+        if 'rf' in self.models:
             rf_model = self.models['rf']['model']
             importances = pd.Series(
                 rf_model.feature_importances_,
                 index=self.feature_names
-            ).sort_values(ascending=True)[-10:]  # Top 10 features
-            importances.plot(kind='barh')
-            ax3.set_title('Top 10 Feature Importance')
+            ).sort_values()[-10:]  # Top 10 features
+            
+            fig.add_trace(
+                go.Bar(
+                    x=importances.values,
+                    y=importances.index,
+                    orientation='h',
+                    name='Feature Importance'
+                ),
+                row=2, col=2
+            )
         
-        plt.tight_layout()
-        plt.show()
+        # Update layout
+        fig.update_layout(
+            height=1000,
+            width=1200,
+            showlegend=True,
+            title_text="Market Predictions Dashboard"
+        )
+        
+        # Save the plot to HTML file
+        fig.write_html("market_predictions.html")
+        print("Visualizations saved to 'market_predictions.html'")
 
 def main():
     # Initialize predictor
