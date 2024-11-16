@@ -220,6 +220,136 @@ class AdvancedMarketPredictor:
         print(f"Target vector shape: {y.shape}")
         
         return X_scaled, y, available_features
+    
+    def train_models(self, X, y):
+        """
+        Train multiple models and evaluate their performance
+        """
+        print("\nTraining models...")
+    
+        # Initialize models
+        models = {
+            'linear': LinearRegression(),
+            'ridge': Ridge(alpha=1.0),
+            'lasso': Lasso(alpha=1.0),
+            'rf': RandomForestRegressor(n_estimators=100, random_state=42),
+            'gbm': GradientBoostingRegressor(n_estimators=100, random_state=42),
+            'xgb': XGBRegressor(n_estimators=100, random_state=42)
+        }
+        
+        # Time series cross-validation
+        tscv = TimeSeriesSplit(n_splits=5)
+        results = {}
+        
+        for name, model in models.items():
+            print(f"\nTraining {name} model...")
+            mse_scores = []
+            r2_scores = []
+            
+            for train_idx, test_idx in tscv.split(X):
+                X_train, X_test = X[train_idx], X[test_idx]
+                y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+                
+                model.fit(X_train, y_train)
+                y_pred = model.predict(X_test)
+                
+                mse_scores.append(mean_squared_error(y_test, y_pred))
+                r2_scores.append(r2_score(y_test, y_pred))
+            
+            results[name] = {
+                'model': model,
+                'mse_mean': np.mean(mse_scores),
+                'mse_std': np.std(mse_scores),
+                'r2_mean': np.mean(r2_scores),
+                'r2_std': np.std(r2_scores)
+            }
+            
+            print(f"{name.upper()} Performance:")
+            print(f"Mean R²: {results[name]['r2_mean']:.4f} (±{results[name]['r2_std']:.4f})")
+            print(f"Mean MSE: {results[name]['mse_mean']:.4f} (±{results[name]['mse_std']:.4f})")
+        
+        self.models = results
+        return results
+
+    def train_prophet_model(self):
+        """
+        Train Facebook Prophet model with additional seasonality features
+        and proper timezone handling
+        """
+        print("\nTraining Prophet model...")
+        
+        # Convert index to datetime and remove timezone
+        prophet_data = pd.DataFrame({
+            'ds': self.data.index.tz_localize(None),  # Remove timezone
+            'y': self.data['Close']
+        })
+        
+        model = Prophet(
+            daily_seasonality=True,
+            weekly_seasonality=True,
+            yearly_seasonality=True,
+            changepoint_prior_scale=0.05
+        )
+        
+        # Add additional regressors if available
+        if 'Volume' in self.data.columns:
+            prophet_data['volume'] = self.data['Volume']
+            model.add_regressor('volume')
+        
+        model.fit(prophet_data)
+        
+        future_dates = model.make_future_dataframe(periods=30)
+        if 'volume' in prophet_data.columns:
+            # Use the mean volume for future predictions
+            future_dates['volume'] = prophet_data['volume'].mean()
+        
+        forecast = model.predict(future_dates)
+        
+        return model, forecast
+
+    def plot_predictions(self, forecast, feature_importance=True):
+        """
+        Enhanced visualization of predictions and model performance
+        """
+        print("\nCreating visualizations...")
+        
+        fig = plt.figure(figsize=(15, 10))
+        
+        # Plot 1: Actual vs Predicted
+        ax1 = plt.subplot2grid((2, 2), (0, 0), colspan=2)
+        ax1.plot(self.data.index, self.data['Close'], label='Actual', alpha=0.7)
+        ax1.plot(forecast['ds'], forecast['yhat'], label='Prophet Forecast', alpha=0.7)
+        ax1.fill_between(
+            forecast['ds'],
+            forecast['yhat_lower'],
+            forecast['yhat_upper'],
+            alpha=0.3,
+            label='Confidence Interval'
+        )
+        ax1.set_title('Price Prediction with Confidence Intervals')
+        ax1.legend()
+        
+        # Plot 2: Model Comparison
+        ax2 = plt.subplot2grid((2, 2), (1, 0))
+        model_names = list(self.models.keys())
+        r2_scores = [m['r2_mean'] for m in self.models.values()]
+        ax2.bar(model_names, r2_scores)
+        ax2.set_title('Model R² Comparison')
+        plt.xticks(rotation=45)
+        
+        # Plot 3: Feature Importance (if available)
+        if feature_importance and 'rf' in self.models:
+            ax3 = plt.subplot2grid((2, 2), (1, 1))
+            rf_model = self.models['rf']['model']
+            importances = pd.Series(
+                rf_model.feature_importances_,
+                index=self.feature_names
+            ).sort_values(ascending=True)[-10:]  # Top 10 features
+            importances.plot(kind='barh')
+            ax3.set_title('Top 10 Feature Importance')
+        
+        plt.tight_layout()
+        plt.show()
 
 def main():
     # Initialize predictor
@@ -239,31 +369,32 @@ def main():
         'yahoo'
     ):
         try:
+
             print("\nPreprocessing data...")
             predictor.preprocess_data()
-
+            
             print("\nPreparing features...")
             X, y, feature_names = predictor.prepare_features()
-            print("Feature preparation successful!")
             predictor.feature_names = feature_names
-                
-                # Train and evaluate all models
-            results = predictor.train_models(X, y)
-            for name, metrics in results.items():
-                print(f"\n{name.upper()} Model Performance:")
-                print(f"Mean R²: {metrics['r2_mean']:.4f} (±{metrics['r2_std']:.4f})")
-                print(f"Mean MSE: {metrics['mse_mean']:.4f} (±{metrics['mse_std']:.4f})")
-                
-            # Train Prophet model
-            prophet_model, forecast = predictor.train_prophet_model()
-                
-             # Plot results
-            predictor.plot_predictions(forecast)
+            print("Feature preparation successful!")
             
-            # Continue with model training...
+            # Train and evaluate models
+            print("\nTraining models...")
+            results = predictor.train_models(X, y)
+            
+            # Train Prophet model
+            print("\nTraining Prophet model...")
+            prophet_model, forecast = predictor.train_prophet_model()
+            
+            # Plot results
+            print("\nGenerating visualizations...")
+            predictor.plot_predictions(forecast)
+
             
         except Exception as e:
             print(f"Error during data processing: {e}")
+            import traceback
+            traceback.print_exc()
     else:
         print("Failed to download data")
 
