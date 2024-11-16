@@ -35,7 +35,7 @@ A comprehensive Python-based tool for predicting stock and forex market movement
 1. **Clone the repository** (optional)
 ```bash
 git clone https://github.com/jasonofua/python-currency-prediction.git
-cd advanced-market-predictor
+cd python-currency-prediction
 ```
 
 2. **Create and activate a virtual environment**
