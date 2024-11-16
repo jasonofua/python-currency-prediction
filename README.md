@@ -145,11 +145,6 @@ The predictor generates several visualizations:
    ```
    Solution: Wait for rate limit reset or upgrade API key
 
-3. **Memory Issues**
-   ```
-   MemoryError: Unable to allocate array
-   ```
-   Solution: Reduce data timeframe or increase system memory
 
 ## Contributing
 
@@ -174,12 +169,13 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 For support or queries:
 - Create an issue in the repository
-- Email: your.email@example.com
+- Email: jasonofua@gmail.com.com
 
 ## Roadmap
 
 Future improvements planned:
 - Additional data sources (OANDA, FXCM)
+- Support for commodities (XAUUSD)
 - Deep learning models (LSTM, Transformer)
 - Portfolio optimization features
 - Real-time prediction capabilities
